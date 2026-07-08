@@ -1,0 +1,2 @@
+# genAiApp
+generative ai app
