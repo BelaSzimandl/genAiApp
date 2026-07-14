@@ -20,8 +20,9 @@ def execute_intent(
         return _run_health_summary(df, max_rows)
     if intent.intent_type == "follow_up" and base_df is not None:
         filtered = _apply_filters(base_df, intent.filters)
-        return _build_filter_result(filtered, intent, max_rows)
-    return _build_filter_result(_apply_filters(df, intent.filters), intent, max_rows)
+        return _build_filter_result(filtered, intent, max_rows, source_df=df)
+    filtered = _apply_filters(df, intent.filters)
+    return _build_filter_result(filtered, intent, max_rows, source_df=df)
 
 
 def _apply_filters(df: pd.DataFrame, filters: dict[str, Any]) -> pd.DataFrame:
@@ -55,7 +56,12 @@ def _apply_filters(df: pd.DataFrame, filters: dict[str, Any]) -> pd.DataFrame:
     return result.sort_values("Timestamp", ascending=False).reset_index(drop=True)
 
 
-def _build_filter_result(filtered: pd.DataFrame, intent: QueryIntent, max_rows: int) -> QueryResult:
+def _build_filter_result(
+    filtered: pd.DataFrame,
+    intent: QueryIntent,
+    max_rows: int,
+    source_df: pd.DataFrame | None = None,
+) -> QueryResult:
     total = len(filtered)
     truncated = total > max_rows
     display = filtered.head(max_rows)
@@ -64,6 +70,8 @@ def _build_filter_result(filtered: pd.DataFrame, intent: QueryIntent, max_rows: 
         parts.append(f"{intent.filters['log_level']} logs")
     if intent.filters.get("component"):
         parts.append(f"component {intent.filters['component']}")
+    if intent.filters.get("system_name"):
+        parts.append(f"system {intent.filters['system_name']}")
     if intent.filters.get("user_id"):
         parts.append(f"user {intent.filters['user_id']}")
     if intent.filters.get("keyword"):
@@ -71,7 +79,9 @@ def _build_filter_result(filtered: pd.DataFrame, intent: QueryIntent, max_rows: 
 
     subject = ", ".join(parts) if parts else "matching logs"
     if total == 0:
-        summary = "No matching logs found. Try: 'Show ERROR logs' or 'Count by component'."
+        summary = _build_empty_summary(intent, source_df)
+    elif intent.filters.get("user_id"):
+        summary = _build_user_activity_summary(filtered, intent.filters["user_id"])
     else:
         summary = f"Found {total} {subject}."
 
@@ -104,7 +114,10 @@ def _run_aggregation(df: pd.DataFrame, intent: QueryIntent, max_rows: int) -> Qu
             temp["bucket"] = temp["Timestamp"].dt.floor("h")
         agg = temp.groupby("bucket", as_index=False).size().rename(columns={"size": "count"})
         agg = agg.sort_values("bucket")
-        summary = f"Trend over time ({bucket} buckets): {int(agg['count'].sum())} events tracked."
+        trend_note = _describe_trend(agg["count"].tolist())
+        summary = (
+            f"Trend over time ({bucket} buckets): {int(agg['count'].sum())} events tracked. {trend_note}"
+        )
     else:
         agg = pd.DataFrame()
         summary = "No aggregation type recognized."
@@ -167,3 +180,49 @@ def _run_health_summary(df: pd.DataFrame, max_rows: int) -> QueryResult:
         aggregation=display,
         truncated=len(comp_stats) > max_rows,
     )
+
+
+def _build_user_activity_summary(filtered: pd.DataFrame, user_id: str) -> str:
+    total = len(filtered)
+    level_breakdown = filtered["log_level"].value_counts().to_dict()
+    parts = [f"{level}={count}" for level, count in sorted(level_breakdown.items())]
+    components = ", ".join(sorted(filtered["component"].unique().tolist()))
+    return (
+        f"Activity summary for {user_id}: {total} events across [{components}]. "
+        f"Breakdown by level: {', '.join(parts)}."
+    )
+
+
+def _build_empty_summary(intent: QueryIntent, source_df: pd.DataFrame | None) -> str:
+    summary = "No matching logs found."
+    hints: list[str] = []
+
+    if source_df is not None and not source_df.empty:
+        if intent.filters.get("since"):
+            min_ts = source_df["Timestamp"].min()
+            max_ts = source_df["Timestamp"].max()
+            hints.append(
+                f"Dataset spans {min_ts.date()} to {max_ts.date()}; your date filter may be outside this range."
+            )
+        if intent.filters.get("component"):
+            available = ", ".join(sorted(source_df["component"].unique().tolist()))
+            hints.append(f"Available components: {available}.")
+        if intent.filters.get("user_id"):
+            available = ", ".join(sorted(u for u in source_df["user_ID"].unique().tolist() if u))
+            hints.append(f"Available users: {available}.")
+        if intent.filters.get("system_name"):
+            available = ", ".join(sorted(source_df["system_name"].unique().tolist()))
+            hints.append(f"Available systems: {available}.")
+
+    hints.append("Try: 'Show ERROR logs' or 'Count by component'.")
+    return summary + " " + " ".join(hints)
+
+
+def _describe_trend(counts: list[int]) -> str:
+    if len(counts) < 2:
+        return "Insufficient data for trend interpretation."
+    if counts[-1] > counts[0]:
+        return "Trend interpretation: increasing over the period."
+    if counts[-1] < counts[0]:
+        return "Trend interpretation: decreasing over the period."
+    return "Trend interpretation: stable over the period."

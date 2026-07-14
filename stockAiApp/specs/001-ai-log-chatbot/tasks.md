@@ -142,3 +142,15 @@
 1. Add User Story 2 → validate scenarios 3–4
 2. Add User Story 3 → validate scenarios 5–7
 3. Polish and README
+
+---
+
+## Phase 7: Convergence
+
+**Purpose**: Close gaps identified by `/speckit.converge` between spec intent and implementation
+
+- [x] T030 Add system_name filter parsing for NL queries in `stockAiApp/src/intent_parser.py` per FR-003 (partial)
+- [x] T031 Enhance zero-result responses with available component/user suggestions and date-range hints in `stockAiApp/src/query_engine.py` per spec edge cases (missing)
+- [x] T032 Add trend direction interpretation to time-bucket aggregations in `stockAiApp/src/query_engine.py` per US2/AC2 (partial)
+- [x] T033 Add user activity summary breakdown when filtering by user_ID in `stockAiApp/src/query_engine.py` per US1/AC2 (partial)
+- [x] T034 Re-run quickstart.md validation scenarios after convergence fixes in `stockAiApp/`

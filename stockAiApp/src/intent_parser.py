@@ -83,16 +83,22 @@ def _extract_filters(lower: str, available_components: list[str] | None) -> dict
         if level.lower() in lower or level.lower() + "s" in lower.split():
             filters["log_level"] = level
             break
+    if "warning" in lower or "warnings" in lower:
+        filters["log_level"] = "WARN"
 
     component = _match_component(lower, available_components or [])
     if component:
         filters["component"] = component
 
-    user_match = re.search(r"(?:user|activities? for|for user)\s+([a-z0-9_-]+)", lower)
-    if user_match:
-        filters["user_id"] = user_match.group(1).upper()
+    activity_match = re.search(r"activit(?:y|ies)\s+for\s+([a-z0-9_-]+)", lower)
+    if activity_match:
+        filters["user_id"] = activity_match.group(1).upper()
     elif "for admin" in lower:
         filters["user_id"] = "ADMIN"
+    else:
+        user_match = re.search(r"(?:for user|user)\s+([a-z0-9_-]+)", lower)
+        if user_match and user_match.group(1) not in {"activities", "activity"}:
+            filters["user_id"] = user_match.group(1).upper()
 
     if "casb" in lower and "component" not in filters:
         filters["component"] = "CASB"
@@ -100,6 +106,13 @@ def _extract_filters(lower: str, available_components: list[str] | None) -> dict
         filters["component"] = "PAM"
     if ("vuln" in lower or "scanner" in lower) and "component" not in filters:
         filters["component"] = "VulnScanner"
+
+    system_match = re.search(
+        r"(?:system|host)\s+([a-z0-9][a-z0-9._-]+)",
+        lower,
+    )
+    if system_match:
+        filters["system_name"] = system_match.group(1)
 
     keyword_match = re.search(r"(?:containing|with|about|mentioning)\s+['\"]?(\w+)", lower)
     if keyword_match:
