@@ -1,0 +1,21 @@
+Timestamp,system_name,component,log_level,corr_id,user_ID,message
+2025-05-01T00:04:59+00:00,casb-proxy-01,CASB,WARN,corr-1001,ADMIN,Policy violation detected for cloud storage upload
+2025-05-01T01:15:22+00:00,vuln-scanner-02,VulnScanner,ERROR,corr-1002,SYSTEM,Failed to complete vulnerability scan on endpoint group A
+2025-05-01T02:30:10+00:00,pam-vault-01,PAM,INFO,corr-1003,ADMIN,User session started for privileged access
+2025-05-01T03:45:33+00:00,casb-proxy-01,CASB,ERROR,corr-1004,SERVICE,Connection timeout to upstream CASB API
+2025-05-01T04:12:07+00:00,casb-proxy-01,CASB,ERROR,corr-1005,SERVICE,Connection timeout to upstream CASB API
+2025-05-01T05:20:18+00:00,vuln-scanner-02,VulnScanner,WARN,corr-1006,ANALYST,High severity CVE detected on asset srv-db-03
+2025-05-01T06:08:44+00:00,pam-vault-01,PAM,INFO,corr-1007,ADMIN,Password rotation completed for svc-backup
+2025-05-01T07:33:55+00:00,casb-proxy-01,CASB,WARN,corr-1008,ANALYST,Suspicious download pattern from user jdoe
+2025-05-01T08:50:12+00:00,vuln-scanner-02,VulnScanner,INFO,corr-1009,SYSTEM,Scheduled scan completed successfully
+2025-05-01T09:17:29+00:00,pam-vault-01,PAM,ERROR,corr-1010,ADMIN,Failed authentication attempt from unknown IP
+2025-05-01T10:05:41+00:00,casb-proxy-01,CASB,INFO,corr-1011,SERVICE,Health check passed
+2025-05-01T11:22:03+00:00,vuln-scanner-02,VulnScanner,ERROR,corr-1012,SYSTEM,Scan agent unreachable on subnet 10.0.5.0/24
+2025-05-01T12:40:17+00:00,pam-vault-01,PAM,WARN,corr-1013,ADMIN,Vault session exceeded recommended duration
+2025-05-02T00:11:28+00:00,casb-proxy-01,CASB,ERROR,corr-1014,SERVICE,Connection timeout to upstream CASB API
+2025-05-02T01:28:50+00:00,vuln-scanner-02,VulnScanner,INFO,corr-1015,ANALYST,Remediation ticket created for CVE-2025-1234
+2025-05-02T02:55:14+00:00,pam-vault-01,PAM,INFO,corr-1016,ADMIN,Audit log export completed
+2025-05-02T03:18:37+00:00,casb-proxy-01,CASB,WARN,corr-1017,ANALYST,Unusual data transfer volume detected
+2025-05-02T04:42:09+00:00,vuln-scanner-02,VulnScanner,WARN,corr-1018,SYSTEM,Scan queue backlog exceeds threshold
+2025-05-02T05:59:22+00:00,pam-vault-01,PAM,ERROR,corr-1019,ADMIN,Failed authentication attempt from unknown IP
+2025-05-02T06:30:45+00:00,casb-proxy-01,CASB,INFO,corr-1020,SERVICE,Daily compliance report generated
