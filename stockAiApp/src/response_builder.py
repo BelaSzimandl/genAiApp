@@ -39,6 +39,13 @@ def format_help() -> str:
     • Errors after May 1
     • Logs containing timeout
 
+  Semantic / vector (message meaning):
+    • Find logs about connection problems
+    • Any threats today?
+    • Search for failed scans
+    • Related to password rotation
+    • Suspicious activity
+
   Aggregate:
     • Count logs by level
     • Count by component

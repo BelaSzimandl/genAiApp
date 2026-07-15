@@ -14,6 +14,9 @@ class QueryIntent:
     time_bucket: Optional[str] = None
     refine_previous: bool = False
     chart_type: str = "bar"
+    # Natural language for semantic / vector search against message embeddings
+    semantic_query: Optional[str] = None
+    top_k: int = 10
 
 
 @dataclass

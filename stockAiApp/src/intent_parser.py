@@ -28,6 +28,15 @@ def parse_intent(text: str, available_components: list[str] | None = None) -> Qu
     if _is_health_query(lower):
         return QueryIntent(intent_type="health_summary")
 
+    if _is_semantic_query(lower):
+        # Keep full user text for embedding quality; strip only display fluff lightly
+        return QueryIntent(
+            intent_type="semantic",
+            semantic_query=normalized,
+            top_k=10,
+            filters=_extract_filters(lower, available_components),
+        )
+
     if _is_follow_up(lower):
         intent = QueryIntent(intent_type="follow_up", refine_previous=True)
         intent.filters = _extract_filters(lower, available_components)
@@ -47,7 +56,50 @@ def parse_intent(text: str, available_components: list[str] | None = None) -> Qu
     if intent.filters:
         return intent
 
+    # Fallback: free-form questions treated as semantic when they look like search
+    if len(normalized.split()) >= 3 and any(
+        w in lower for w in ("find", "search", "look", "related", "similar", "issues", "problems", "threats")
+    ):
+        return QueryIntent(intent_type="semantic", semantic_query=normalized, top_k=10)
+
     return QueryIntent(intent_type="unknown")
+
+
+def _is_semantic_query(lower: str) -> bool:
+    markers = (
+        "similar to",
+        "semantically",
+        "vector search",
+        "related to",
+        "find logs about",
+        "search for",
+        "look for",
+        "any threats",
+        "any issues",
+        "problems with",
+        "connection problems",
+        "failed scans",
+        "suspicious activity",
+    )
+    return any(m in lower for m in markers)
+
+
+def _semantic_query_text(original: str, lower: str) -> str:
+    """Strip command prefixes; keep the meaning for embedding."""
+    for prefix in (
+        "find logs about ",
+        "search for ",
+        "look for ",
+        "logs related to ",
+        "related to ",
+        "similar to ",
+        "semantically ",
+        "vector search ",
+        "any ",
+    ):
+        if lower.startswith(prefix):
+            return original[len(prefix) :].strip() or original
+    return original
 
 
 def _is_chart_request(lower: str) -> bool:

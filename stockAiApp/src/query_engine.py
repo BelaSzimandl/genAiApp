@@ -13,16 +13,62 @@ def execute_intent(
     intent: QueryIntent,
     max_rows: int = 20,
     base_df: pd.DataFrame | None = None,
+    semantic_df: pd.DataFrame | None = None,
 ) -> QueryResult:
     if intent.intent_type == "aggregate":
         return _run_aggregation(df, intent, max_rows)
     if intent.intent_type == "health_summary":
         return _run_health_summary(df, max_rows)
+    if intent.intent_type == "semantic":
+        return _run_semantic(semantic_df if semantic_df is not None else df, intent, max_rows)
     if intent.intent_type == "follow_up" and base_df is not None:
         filtered = _apply_filters(base_df, intent.filters)
         return _build_filter_result(filtered, intent, max_rows, source_df=df)
     filtered = _apply_filters(df, intent.filters)
     return _build_filter_result(filtered, intent, max_rows, source_df=df)
+
+
+def _run_semantic(
+    hits: pd.DataFrame,
+    intent: QueryIntent,
+    max_rows: int,
+) -> QueryResult:
+    """Build result from precomputed vector/semantic hits (already ranked)."""
+    work = hits.copy() if hits is not None else pd.DataFrame()
+    # Preserve similarity ranking — do not reuse _apply_filters (it re-sorts by time).
+    if not work.empty and intent.filters:
+        f = intent.filters
+        if "log_level" in f:
+            work = work[work["log_level"] == str(f["log_level"]).upper()]
+        if "component" in f:
+            work = work[work["component"].str.upper() == str(f["component"]).upper()]
+        if "user_id" in f:
+            work = work[work["user_ID"].str.upper() == str(f["user_id"]).upper()]
+        if "similarity" in work.columns:
+            work = work.sort_values("similarity", ascending=True)
+        work = work.reset_index(drop=True)
+
+    total = len(work)
+    display = work.head(max_rows)
+    q = intent.semantic_query or "your query"
+    if total == 0:
+        summary = (
+            f"No semantically similar logs found for '{q}'. "
+            "Try different wording or run: python -m src.ingest_cosmos"
+        )
+    else:
+        backend = getattr(hits, "attrs", {}).get("vector_backend", "semantic") if hits is not None else "semantic"
+        summary = (
+            f"Semantic search for '{q}' returned {total} ranked hit(s) "
+            f"(backend: {backend}; lower similarity distance is closer)."
+        )
+    return QueryResult(
+        rows=display,
+        total_count=total,
+        summary=summary,
+        truncated=total > max_rows,
+        full_rows=work,
+    )
 
 
 def _apply_filters(df: pd.DataFrame, filters: dict[str, Any]) -> pd.DataFrame:
