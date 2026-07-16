@@ -12,15 +12,16 @@ Provision Azure Cosmos DB (NoSQL) in the user's subscription, create `LogInsight
 
 **Primary Dependencies**: azure-cosmos, python-dotenv (plus existing pandas stack)
 
-**Storage**: Azure Cosmos DB for NoSQL (account `cosmos-stockai-poc-ne2`, Sweden Central)
+**Storage**: Azure Cosmos DB for NoSQL (account `cosmos-stock-market-ai`, Poland Central)
 
 **Azure resources**:
 | Resource | Value |
 |----------|--------|
 | Subscription | Visual Studio Professional |
-| Resource group | `rg-stockai-poc` (West Europe metadata; account in Sweden Central) |
-| Account | `cosmos-stockai-poc-ne2` |
-| Endpoint | `https://cosmos-stockai-poc-ne2.documents.azure.com:443/` |
+| Resource group | `stock-market-ai-rg` (same RG as Foundry chatbot; RG metadata Poland Central) |
+| Account | `cosmos-stock-market-ai` |
+| Account region | Poland Central (West Europe was capacity-blocked) |
+| Endpoint | `https://cosmos-stock-market-ai.documents.azure.com:443/` |
 | Database | `LogInsights` |
 | Container | `log_entries` |
 | Partition key | `/component` |

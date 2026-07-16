@@ -4,9 +4,10 @@
 
 - [x] T001 Install Azure CLI and authenticate
 - [x] T002 Register `Microsoft.DocumentDB` on subscription
-- [x] T003 Create resource group `rg-stockai-poc`
-- [x] T004 Create Cosmos account `cosmos-stockai-poc-ne2` (Sweden Central)
+- [x] T003 Create resource group `rg-stockai-poc` (superseded — Cosmos moved into chatbot RG)
+- [x] T004 Create Cosmos account `cosmos-stockai-poc-ne2` (superseded)
 - [x] T005 Create database `LogInsights` and container `log_entries` (PK `/component`, 400 RU/s)
+- [x] T019 Replace Cosmos into `stock-market-ai-rg` as `cosmos-stock-market-ai` (Poland Central); re-ingest; delete `rg-stockai-poc`
 
 ## Phase 2: Application integration
 

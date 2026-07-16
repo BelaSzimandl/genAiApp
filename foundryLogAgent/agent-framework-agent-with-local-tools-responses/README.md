@@ -1,121 +1,94 @@
-# Agent with Local Tools (Responses Protocol)
+# Log Insights — Azure AI Foundry Hosted Agent (code deploy)
 
-An [Agent Framework](https://github.com/microsoft/agent-framework) agent with **locally-defined Python tools** hosted on Microsoft Foundry using the **Responses protocol**. This sample shows how to define custom tools with the `@tool` decorator and register them with the agent so the model can call them during a conversation. A `get_weather` function is included as an example tool.
+LLM chatbot for security/monitoring logs with tools over **Azure Cosmos DB**.
 
-## How it works
+**Prefer West/Central Europe for resources.** Note: **Foundry Hosted Agents are not supported in West Europe.** Use **Sweden Central**, **Poland Central**, **France Central**, or **Germany West Central** for code-deployed agents.
 
-The agent uses `FoundryChatClient` from the Agent Framework and is served via `ResponsesHostServer`. Custom tools are defined with the `@tool` decorator — the model sees each function's signature and docstring and decides when to call them. See [main.py](src/agent-framework-agent-with-local-tools-responses/main.py) for the implementation.
+The agent currently used in project **stock-market-ai** (West Europe) is the **prompt agent** `log-insights-chatbot` — see `../README.md`.
 
-## Option 1: Azure Developer CLI (`azd`)
+Portal: [Azure AI Foundry](https://ai.azure.com/home)
 
-### Prerequisites
+## Azure resources (provisioned)
 
-1. **Azure Developer CLI (`azd`)** — [Install azd](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/install-azd)
-2. Install the AI agent extension:
-   ```bash
-   azd ext install microsoft.foundry
-   ```
-3. Authenticate:
-   ```bash
-   azd auth login
-   ```
+| Item | Value |
+|------|--------|
+| Subscription | Visual Studio Professional |
+| Resource group | `rg-loginsights-dev` |
+| Foundry account | `cog-a7fen2lryryp4` |
+| Project | `loginsights-dev` |
+| Agent | `log-insights-agent` |
+| Region | North Central US |
+| Project endpoint | `https://cog-a7fen2lryryp4.services.ai.azure.com/api/projects/loginsights-dev` |
+| Agent playground | Open from [ai.azure.com](https://ai.azure.com) → project **loginsights-dev** → Agents → **log-insights-agent** |
 
-### Initialize the agent project
+## What the agent does
 
-No cloning required. Create a new folder and initialize from the manifest:
+Hosted Python agent (Responses protocol) with tools:
 
-```bash
-mkdir my-tools-agent && cd my-tools-agent
+| Tool | Purpose |
+|------|---------|
+| `filter_logs_tool` | Filter by level / component / user / keyword |
+| `count_logs_tool` | Counts by level, component, or day |
+| `health_summary_tool` | ERROR/WARN health index style summary |
+| `semantic_search_tool` | Meaning-oriented search over messages |
 
-azd ai agent init -m https://github.com/microsoft-foundry/foundry-samples/blob/main/samples/python/hosted-agents/agent-framework/responses/02-tools/azure.yaml
+Data source (env `LOG_DATA_SOURCE`):
+
+- `auto` — Cosmos if configured, else sample CSV  
+- `cosmos` — Azure Cosmos DB only  
+- `csv` — bundled `data/sample_logs.csv`
+
+## One-time model quota (required for chat)
+
+Your **Visual Studio Professional** subscription currently has **0 TPM** for chat models (e.g. `gpt-5.4-mini`). The Foundry **project + agent are deployed**, but invokes need a model deployment.
+
+1. Request quota: Azure Portal → **Quotas** (Cognitive Services / Azure OpenAI) or [https://aka.ms/oai/stuquotarequest](https://aka.ms/oai/stuquotarequest)  
+   Ask for e.g. **GlobalStandard gpt-5.4-mini** (or `gpt-5-mini` / `gpt-4o-mini`) in a usable region.
+2. Put the model back into `azure.yaml` under `services.ai-project.deployments` (example in file comments).
+3. Run:
+
+```powershell
+cd foundryLogAgent\agent-framework-agent-with-local-tools-responses
+azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "gpt-5.4-mini"
+azd provision --no-prompt
+azd deploy --no-prompt
 ```
 
-Follow the prompts to configure your Foundry project and model deployment. If you don't have an existing Foundry project, `azd ai agent init` will guide you through creating one.
+**Note:** EPAM Production has model quota, but this account lacks `deployments/write` there. Prefer quota on VS Professional, or get Contributor + model access on a sub you can deploy to.
 
-### Provision Azure resources (if needed)
+## Local commands
 
-If you don't already have a Foundry project and model deployment:
+```powershell
+# Auth
+azd auth login
+az login
 
-```bash
-azd provision
+cd foundryLogAgent\agent-framework-agent-with-local-tools-responses
+
+# Status
+azd ai project show
+azd ai agent show log-insights-agent
+
+# Invoke (after model is deployed)
+azd ai agent invoke log-insights-agent "Show recent ERROR logs"
+azd ai agent invoke log-insights-agent "What's the system health?"
+azd ai agent invoke log-insights-agent "Find logs about connection problems"
 ```
 
-### Run the agent locally
+## Redeploy after code changes
 
-```bash
-azd ai agent run
+```powershell
+azd deploy --no-prompt
 ```
 
-The agent host will start on `http://localhost:8088`.
+## Layout
 
-### Invoke the local agent
-
-In a separate terminal, from the project directory:
-
-```bash
-azd ai agent invoke --local "What is the weather in Seattle?"
+```text
+foundryLogAgent/agent-framework-agent-with-local-tools-responses/
+├── azure.yaml                 # Foundry agent + ai-project
+├── src/.../main.py            # Hosted agent entry (tools + LLM)
+├── src/.../log_tools.py       # Cosmos / CSV query helpers
+└── src/.../data/sample_logs.csv
 ```
 
-### Deploy to Foundry
-
-Once tested locally, deploy to Microsoft Foundry:
-
-```bash
-azd deploy
-```
-
-For the full deployment guide, see [Deploy a hosted agent](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent).
-
-### Invoke the deployed agent
-
-```bash
-azd ai agent invoke "What is the weather in Seattle?"
-```
-
-## Option 2: VS Code (Foundry Toolkit)
-
-### Prerequisites
-
-1. **VS Code** with the **[Foundry Toolkit](https://marketplace.visualstudio.com/items?itemName=ms-windows-ai-studio.windows-ai-studio)** extension installed.
-2. For debugging Python in VS Code, install the **[Python](https://marketplace.visualstudio.com/items?itemName=ms-python.python)** extension pack.
-
-### Set up the Python virtual environment
-
-- Open the Command Palette (`Ctrl+Shift+P`) and run **Python: Create Environment...** to create a virtual environment in the workspace (or **Python: Select Interpreter** to use an existing one).
-- Install dependencies in the virtual environment:
-
-  ```bash
-  # use uv to accelerate
-  pip install uv
-  uv pip install -r requirements.txt
-
-  # or pure pip
-  pip install -r requirements.txt
-  ```
-
-### Run and debug the agent
-
-Press **F5** to start the agent. The agent starts and the **Agent Inspector** opens automatically. Chat with the agent in the Inspector.
-
-### Or run manually, then open the Inspector
-
-1. Set the required environment variables and sign in to Azure with the Azure CLI (`az login`).
-2. Start the agent: `python main.py` (listens on `http://localhost:8088`).
-3. Command Palette (`Ctrl+Shift+P`) → **Foundry Toolkit: Open Agent Inspector**, then send a message to test.
-
-### Deploy to Foundry
-
-1. Open the Command Palette (`Ctrl+Shift+P`) and run **Foundry Toolkit: Deploy Hosted Agent**. The extension opens a **Deploy Hosted Agent** wizard and reads `agent.yaml` to auto-populate settings.
-2. If prompted, complete **Foundry Project Setup** to select subscription and project.
-3. On the **Basics** tab, choose deployment method (**Code** or **Container**) and confirm the agent name.
-4. On **Review + Deploy**, confirm runtime details, pick **CPU and Memory** size, and click **Deploy**.
-5. After deployment, invoke the agent in the Agent Playground and stream live logs from the **Logs** tab.
-
-## Next steps
-
-- [Quickstart: Create a hosted agent](https://learn.microsoft.com/en-us/azure/foundry/agents/quickstarts/quickstart-hosted-agent) — end-to-end walkthrough using `azd`
-- [Tool catalog](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/tool-catalog) — browse available tools to extend your agent (Bing Search, Azure AI Search, file search, code interpreter, and more)
-- [Manage hosted agents](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/manage-hosted-agent) — monitor and manage deployed agents
-- [Basic agent](../01-basic/) — minimal agent with no tools
-- [Connect to MCP servers](../03-mcp/) — sample using remote MCP tool providers
-- [Use Foundry Toolbox](../04-foundry-toolbox/) — sample with Azure Foundry Toolbox integration
+Related CLI POC (rule-based, no Foundry): `../stockAiApp/`.

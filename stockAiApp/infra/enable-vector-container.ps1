@@ -5,8 +5,8 @@
 #   pwsh ./infra/enable-vector-container.ps1
 
 $ErrorActionPreference = "Stop"
-$Account = "cosmos-stockai-poc-ne2"
-$Rg = "rg-stockai-poc"
+$Account = "cosmos-stock-market-ai"
+$Rg = "stock-market-ai-rg"
 $Db = "LogInsights"
 $Container = "log_entries"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path

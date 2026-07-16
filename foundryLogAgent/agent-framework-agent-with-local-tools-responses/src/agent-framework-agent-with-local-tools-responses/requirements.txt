@@ -1,5 +1,11 @@
 agent-framework-foundry
 agent-framework-foundry-hosting>=1.0.0a260630
+azure-identity
+python-dotenv
+pandas>=2.0.0
+azure-cosmos>=4.7.0
+pydantic
+typing_extensions
 
 # debugpy enables local debugging of this agent with the Foundry Toolkit VS Code extension.
 debugpy

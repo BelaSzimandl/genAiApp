@@ -19,9 +19,9 @@ Cloud store for logs (feature `002-cosmos-log-store`).
 | Item | Value |
 |------|--------|
 | Subscription | Visual Studio Professional |
-| Resource group | `rg-stockai-poc` |
-| Account | `cosmos-stockai-poc-ne2` |
-| Region | Sweden Central |
+| Resource group | `stock-market-ai-rg` (same as Foundry chatbot) |
+| Account | `cosmos-stock-market-ai` |
+| Region | Poland Central |
 | Database | `LogInsights` |
 | Container | `log_entries` (partition key `/component`) |
 | Portal | [Cosmos accounts](https://portal.azure.com/#browse/Microsoft.DocumentDb%2FdatabaseAccounts) |
@@ -31,7 +31,7 @@ Cloud store for logs (feature `002-cosmos-log-store`).
 ```bash
 copy .env.example .env
 # Set COSMOS_KEY from Portal → Keys, or:
-# az cosmosdb keys list -n cosmos-stockai-poc-ne2 -g rg-stockai-poc --type keys
+# az cosmosdb keys list -n cosmos-stock-market-ai -g stock-market-ai-rg --type keys
 ```
 
 ### Ingest sample data and chat from Cosmos
