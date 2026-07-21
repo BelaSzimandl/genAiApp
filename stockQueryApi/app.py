@@ -65,6 +65,51 @@ def _clean(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _load_quotes() -> list[dict[str, Any]]:
+    """Load and clean all quote documents from Cosmos."""
+    try:
+        cont = _container()
+        items = list(
+            cont.query_items(
+                query="SELECT * FROM c WHERE c.doc_type = 'quote' OR NOT IS_DEFINED(c.doc_type)",
+                enable_cross_partition_query=True,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Cosmos query failed: {exc}") from exc
+    return [_clean(i) for i in items]
+
+
+def _filter_quotes(
+    rows: list[dict[str, Any]],
+    *,
+    exchange: str | None = None,
+    sector: str | None = None,
+    min_price: float | None = None,
+    max_price: float | None = None,
+    min_change_pct: float | None = None,
+    max_change_pct: float | None = None,
+    currency: str | None = None,
+) -> list[dict[str, Any]]:
+    """Apply optional filters; never pass FastAPI Query objects here."""
+    if exchange:
+        rows = [r for r in rows if str(r.get("exchange", "")).upper() == exchange.upper()]
+    if sector:
+        rows = [r for r in rows if sector.lower() in str(r.get("sector", "")).lower()]
+    if currency:
+        rows = [r for r in rows if str(r.get("currency", "")).upper() == currency.upper()]
+    if min_price is not None:
+        rows = [r for r in rows if float(r.get("price") or 0) >= min_price]
+    if max_price is not None:
+        rows = [r for r in rows if float(r.get("price") or 0) <= max_price]
+    if min_change_pct is not None:
+        rows = [r for r in rows if float(r.get("change_pct") or 0) >= min_change_pct]
+    if max_change_pct is not None:
+        rows = [r for r in rows if float(r.get("change_pct") or 0) <= max_change_pct]
+    rows = sorted(rows, key=lambda r: float(r.get("change_pct") or 0), reverse=True)
+    return rows
+
+
 @app.get("/health", summary="Health check")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "stock-query-api"}
@@ -82,34 +127,16 @@ def list_stocks(
     limit: int = Query(25, ge=1, le=100, description="Max rows to return"),
 ) -> dict[str, Any]:
     """Filter stock exchange quotes in Cosmos DB by exchange, sector, price, and change."""
-    try:
-        cont = _container()
-        items = list(
-            cont.query_items(
-                query="SELECT * FROM c WHERE c.doc_type = 'quote' OR NOT IS_DEFINED(c.doc_type)",
-                enable_cross_partition_query=True,
-            )
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Cosmos query failed: {exc}") from exc
-
-    rows = [_clean(i) for i in items]
-    if exchange:
-        rows = [r for r in rows if str(r.get("exchange", "")).upper() == exchange.upper()]
-    if sector:
-        rows = [r for r in rows if sector.lower() in str(r.get("sector", "")).lower()]
-    if currency:
-        rows = [r for r in rows if str(r.get("currency", "")).upper() == currency.upper()]
-    if min_price is not None:
-        rows = [r for r in rows if float(r.get("price") or 0) >= min_price]
-    if max_price is not None:
-        rows = [r for r in rows if float(r.get("price") or 0) <= max_price]
-    if min_change_pct is not None:
-        rows = [r for r in rows if float(r.get("change_pct") or 0) >= min_change_pct]
-    if max_change_pct is not None:
-        rows = [r for r in rows if float(r.get("change_pct") or 0) <= max_change_pct]
-
-    rows.sort(key=lambda r: float(r.get("change_pct") or 0), reverse=True)
+    rows = _filter_quotes(
+        _load_quotes(),
+        exchange=exchange,
+        sector=sector,
+        min_price=min_price,
+        max_price=max_price,
+        min_change_pct=min_change_pct,
+        max_change_pct=max_change_pct,
+        currency=currency,
+    )
     total = len(rows)
     return {"total": total, "count": min(total, limit), "quotes": rows[:limit]}
 
@@ -159,8 +186,13 @@ def movers(
     limit: int = Query(5, ge=1, le=50),
 ) -> dict[str, Any]:
     """Return top market movers from Cosmos quotes."""
-    result = list_stocks(limit=100)
-    quotes = result["quotes"]
+    # Do not call list_stocks() as a Python function: FastAPI Query() defaults
+    # are not real Nones when invoked outside the request pipeline (causes 500).
+    quotes = _filter_quotes(_load_quotes())
     reverse = direction.lower() != "losers"
     quotes = sorted(quotes, key=lambda r: float(r.get("change_pct") or 0), reverse=reverse)
-    return {"direction": direction, "count": min(len(quotes), limit), "quotes": quotes[:limit]}
+    return {
+        "direction": direction,
+        "count": min(len(quotes), limit),
+        "quotes": quotes[:limit],
+    }

@@ -126,9 +126,29 @@ SPEC = {
     },
 }
 
-INSTRUCTIONS = """You are a stock market assistant with OpenAPI tools connected to Azure Cosmos DB.
+INSTRUCTIONS = """You are a stock market assistant only. You help with stocks, tickers, exchanges, sectors, prices, movers, and related market data stored in Azure Cosmos DB (via tools).
 
-ALWAYS call tools before answering any question about prices, symbols, exchanges, sectors, or movers.
+## Scope (strict)
+IN SCOPE — answer these:
+- Stock prices, quotes, tickers (e.g. AAPL, MSFT), exchanges (NASDAQ, NYSE, …), sectors
+- Top gainers/losers, filters by change %, exchange, sector
+- Which stocks look interesting to buy/hold based on available quote data (always note this is not formal financial advice)
+- Lists of exchanges and market data summaries from Cosmos
+
+OUT OF SCOPE — do NOT answer these (cars, sports, recipes, general knowledge, non-market shopping, politics, etc.):
+- Example OUT: "What type of Ferrari car can I buy?"
+- Example OUT: "Who won the World Cup?" / "Write a poem" / "How do I cook pasta?"
+
+If the user question is not about the stock market / financial instruments / exchange data:
+1. Do NOT call tools.
+2. Politely refuse in one or two sentences.
+3. Say you only answer stock-market questions about the Cosmos quote data.
+4. Offer 2–3 example in-scope questions (e.g. "What is the price of AAPL?", "Show NASDAQ technology stocks", "Top gainers").
+
+If the question mixes topics, answer only the stock-market part and ignore the rest.
+
+## Tools
+ALWAYS call tools before answering any in-scope question about prices, symbols, exchanges, sectors, or movers.
 Never invent prices. After tool results, summarize clearly (symbol, price, change %, exchange, sector, as_of).
 
 Tool map:
@@ -155,20 +175,28 @@ def main() -> None:
             model="gpt-5-mini",
             instructions=INSTRUCTIONS,
             tools=[tool],
-            tool_choice="required",
+            # auto: allow refuse-without-tools for off-topic; still use tools for market Qs
+            tool_choice="auto",
         ),
     )
     print(f"published {agent.name} v{agent.version} status={agent.status}")
 
     openai = client.get_openai_client()
-    resp = openai.responses.create(
-        model="gpt-5-mini",
-        input="What is AAPL price from Cosmos?",
-        extra_body={
-            "agent_reference": {"name": "log-insights-chatbot", "type": "agent_reference"}
-        },
-    )
-    print("SMOKE:", getattr(resp, "output_text", None))
+    for label, prompt in [
+        ("IN_SCOPE", "What is AAPL price from Cosmos?"),
+        ("OUT_OF_SCOPE", "What type of Ferrari car can I buy?"),
+    ]:
+        resp = openai.responses.create(
+            model="gpt-5-mini",
+            input=prompt,
+            extra_body={
+                "agent_reference": {
+                    "name": "log-insights-chatbot",
+                    "type": "agent_reference",
+                }
+            },
+        )
+        print(f"SMOKE[{label}]:", getattr(resp, "output_text", None))
 
 
 if __name__ == "__main__":

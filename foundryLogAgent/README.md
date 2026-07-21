@@ -25,7 +25,9 @@ All in resource group **`stock-market-ai-rg`**.
 
 ## Ask the chatbot
 
-Examples (live Cosmos data):
+**Scope:** stock market / exchange quotes only. Off-topic questions (cars, sports, general chat, etc.) are refused with a short redirect to market examples.
+
+In scope (live Cosmos data):
 
 - What is the price of AAPL?
 - Show NASDAQ technology stocks
@@ -33,6 +35,12 @@ Examples (live Cosmos data):
 - Energy stocks on NYSE
 - List exchanges
 - Filter stocks down more than 1%
+- What stock looks worth buying based on recent movers? (informational, not advice)
+
+Out of scope (agent must refuse):
+
+- What type of Ferrari can I buy?
+- Non-market general knowledge or shopping questions
 
 ## Azure resources
 
