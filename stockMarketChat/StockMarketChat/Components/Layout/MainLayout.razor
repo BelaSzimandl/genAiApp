@@ -1,0 +1,29 @@
+@inherits LayoutComponentBase
+
+<div class="page market-shell">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-4">
+            <div class="market-status">
+                <span class="status-dot"></span>
+                <span>TRADING DESK</span>
+                <span class="sep">|</span>
+                <span class="muted">.NET 10 · Blazor WebAssembly</span>
+            </div>
+            <a class="top-link" href="https://ai.azure.com" target="_blank" rel="noopener">Foundry</a>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>

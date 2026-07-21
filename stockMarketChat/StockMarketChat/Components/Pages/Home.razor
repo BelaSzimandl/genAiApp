@@ -1,0 +1,61 @@
+@page "/"
+
+<PageTitle>MarketDesk — Floor</PageTitle>
+
+<div class="floor">
+    <section class="hero">
+        <div class="hero-copy">
+            <p class="eyebrow">Stock market AI · trading desk theme</p>
+            <h1>Talk to the market chatbot</h1>
+            <p class="lede">
+                Natural-language access to stock quotes, exchanges, and movers —
+                backed by your Foundry agent <code>log-insights-chatbot</code>
+                and Cosmos-powered stock API.
+            </p>
+            <div class="hero-actions">
+                <a class="btn-gold" href="chat">Open chat window</a>
+                <a class="btn-ghost" href="https://stock-query-api-bsz.azurewebsites.net/health" target="_blank" rel="noopener">API health</a>
+            </div>
+        </div>
+        <div class="hero-panel">
+            <div class="candle-chart" aria-hidden="true">
+                <div class="candle up" style="--h: 48%"></div>
+                <div class="candle down" style="--h: 32%"></div>
+                <div class="candle up" style="--h: 58%"></div>
+                <div class="candle up" style="--h: 72%"></div>
+                <div class="candle down" style="--h: 40%"></div>
+                <div class="candle up" style="--h: 65%"></div>
+                <div class="candle down" style="--h: 28%"></div>
+                <div class="candle up" style="--h: 80%"></div>
+            </div>
+            <div class="stat-grid">
+                <div class="stat">
+                    <span class="label">Focus</span>
+                    <span class="value gold">Equities &amp; FX</span>
+                </div>
+                <div class="stat">
+                    <span class="label">UI</span>
+                    <span class="value">Blazor WASM</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Agent</span>
+                    <span class="value green">log-insights-chatbot</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Data</span>
+                    <span class="value">Cosmos quotes</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="sample-queries">
+        <h2>Try on the desk</h2>
+        <div class="query-cards">
+            <div class="q-card">What is the price of AAPL?</div>
+            <div class="q-card">Show NASDAQ technology stocks</div>
+            <div class="q-card">Top gainers</div>
+            <div class="q-card">Energy stocks on NYSE</div>
+        </div>
+    </section>
+</div>

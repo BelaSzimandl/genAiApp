@@ -1,0 +1,279 @@
+@page "/chat"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@using StockMarketChat.Client.Models
+@inject HttpClient Http
+@inject IJSRuntime Js
+
+<PageTitle>MarketDesk Chat</PageTitle>
+
+<div class="market-chat">
+    <header class="chat-header">
+        <div class="header-left">
+            <div class="pulse-dot" title="Live desk"></div>
+            <div>
+                <h1>MarketDesk AI</h1>
+                <p class="subtitle">Stock &amp; exchange insights · live session</p>
+            </div>
+        </div>
+        <div class="header-badges">
+            <span class="badge badge-gold">BLAZOR WASM</span>
+            <span class="badge badge-green">@(_providerLabel)</span>
+        </div>
+    </header>
+
+    <div class="ticker-tape" aria-hidden="true">
+        <div class="ticker-track">
+            @foreach (var tick in _ticker)
+            {
+                <span class="tick @(tick.Up ? "up" : "down")">
+                    @tick.Symbol <strong>@tick.Change</strong>
+                </span>
+            }
+            @foreach (var tick in _ticker)
+            {
+                <span class="tick @(tick.Up ? "up" : "down")">
+                    @tick.Symbol <strong>@tick.Change</strong>
+                </span>
+            }
+        </div>
+    </div>
+
+    <div class="chat-shell">
+        <aside class="prompt-rail">
+            <h2>Quick orders</h2>
+            <p class="rail-hint">Click to fill the tape</p>
+            @foreach (var prompt in _quickPrompts)
+            {
+                <button type="button" class="prompt-chip" disabled="@_busy" @onclick="() => UsePrompt(prompt)">
+                    @prompt
+                </button>
+            }
+
+            <div class="rail-card">
+                <h3>Desk rules</h3>
+                <ul>
+                    <li>Market &amp; exchange quotes only</li>
+                    <li>Informational — not investment advice</li>
+                    <li>Off-topic asks get a redirect</li>
+                </ul>
+            </div>
+        </aside>
+
+        <section class="chat-panel">
+            <div class="messages" @ref="_messagesRef">
+                @foreach (var msg in _messages)
+                {
+                    <div class="msg @msg.Role">
+                        <div class="msg-meta">
+                            <span class="role-label">@(msg.Role == "user" ? "You" : "MarketDesk")</span>
+                            <span class="time">@msg.Timestamp.ToLocalTime().ToString("HH:mm")</span>
+                        </div>
+                        <div class="msg-body">@((MarkupString)FormatContent(msg.Content))</div>
+                    </div>
+                }
+
+                @if (_busy)
+                {
+                    <div class="msg assistant typing">
+                        <div class="msg-meta">
+                            <span class="role-label">MarketDesk</span>
+                            <span class="time">…</span>
+                        </div>
+                        <div class="msg-body">
+                            <span class="typing-dots"><span></span><span></span><span></span></span>
+                            Scanning the book…
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_error))
+            {
+                <div class="error-banner">@_error</div>
+            }
+
+            <form class="composer" @onsubmit="SendAsync" @onsubmit:preventDefault>
+                <textarea
+                    @bind="_draft"
+                    @bind:event="oninput"
+                    @onkeydown="OnKeyDown"
+                    rows="2"
+                    placeholder="Ask about tickers, exchanges, sectors, movers…"
+                    disabled="@_busy"
+                    maxlength="4000"></textarea>
+                <button type="submit" class="send-btn" disabled="@(_busy || string.IsNullOrWhiteSpace(_draft))">
+                    Send
+                </button>
+            </form>
+        </section>
+    </div>
+</div>
+
+@code {
+    private readonly List<ChatMessageDto> _messages = [];
+    private readonly List<(string Symbol, string Change, bool Up)> _ticker =
+    [
+        ("AAPL", "+1.24%", true),
+        ("MSFT", "+0.68%", true),
+        ("NVDA", "-0.41%", false),
+        ("SPY", "+0.22%", true),
+        ("BTC-USD", "+2.15%", true),
+        ("XOM", "-0.18%", false),
+        ("SAP", "+0.91%", true),
+        ("NASDAQ", "+0.55%", true)
+    ];
+
+    private readonly string[] _quickPrompts =
+    [
+        "What is the price of AAPL?",
+        "Show NASDAQ technology stocks",
+        "Top gainers",
+        "Energy stocks on NYSE",
+        "List exchanges",
+        "Filter stocks down more than 1%"
+    ];
+
+    private string _draft = string.Empty;
+    private bool _busy;
+    private string? _error;
+    private string _providerLabel = "CONNECTING";
+    private ElementReference _messagesRef;
+
+    protected override void OnInitialized()
+    {
+        _messages.Add(new ChatMessageDto
+        {
+            Role = "assistant",
+            Content =
+                "Welcome to **MarketDesk AI**. Ask about live quotes, exchanges, sectors, or movers.\n\n" +
+                "Examples: *What is the price of AAPL?* · *Top gainers* · *Energy stocks on NYSE*",
+            Timestamp = DateTimeOffset.Now
+        });
+        _providerLabel = "READY";
+    }
+
+    private async Task UsePrompt(string prompt)
+    {
+        _draft = prompt;
+        await SendAsync();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendAsync();
+        }
+    }
+
+    private async Task SendAsync()
+    {
+        var text = _draft.Trim();
+        if (_busy || string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        _error = null;
+        _busy = true;
+        _draft = string.Empty;
+
+        var userMsg = new ChatMessageDto
+        {
+            Role = "user",
+            Content = text,
+            Timestamp = DateTimeOffset.Now
+        };
+        _messages.Add(userMsg);
+        await ScrollToBottomAsync();
+
+        try
+        {
+            var history = _messages
+                .Where(m => m != userMsg)
+                .Select(m => new ChatMessageDto { Role = m.Role, Content = m.Content })
+                .ToList();
+
+            var request = new ChatRequest { Message = text, History = history };
+            var response = await Http.PostAsJsonAsync("api/chat", request);
+
+            ChatResponse? payload = null;
+            if (response.Content.Headers.ContentLength is not 0)
+            {
+                payload = await response.Content.ReadFromJsonAsync<ChatResponse>();
+            }
+
+            if (!response.IsSuccessStatusCode || payload is null)
+            {
+                var raw = payload?.Error ?? await response.Content.ReadAsStringAsync();
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(raw) ? response.ReasonPhrase : raw);
+            }
+
+            _providerLabel = payload.Provider.ToUpperInvariant();
+            _messages.Add(new ChatMessageDto
+            {
+                Role = "assistant",
+                Content = string.IsNullOrWhiteSpace(payload.Reply)
+                    ? (payload.Error ?? "No reply from the desk.")
+                    : payload.Reply,
+                Timestamp = DateTimeOffset.Now
+            });
+
+            if (!payload.Success && !string.IsNullOrWhiteSpace(payload.Error))
+            {
+                _error = payload.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _messages.Add(new ChatMessageDto
+            {
+                Role = "assistant",
+                Content = $"Could not reach the trading desk backend: {ex.Message}",
+                Timestamp = DateTimeOffset.Now
+            });
+            _providerLabel = "ERROR";
+        }
+        finally
+        {
+            _busy = false;
+            await ScrollToBottomAsync();
+        }
+    }
+
+    private async Task ScrollToBottomAsync()
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("marketChat.scrollToBottom", _messagesRef);
+        }
+        catch
+        {
+            // JS may not be ready on first paint.
+        }
+    }
+
+    private static string FormatContent(string content)
+    {
+        // Lightweight markdown-ish formatting for chat bubbles.
+        var encoded = System.Net.WebUtility.HtmlEncode(content);
+        encoded = System.Text.RegularExpressions.Regex.Replace(
+            encoded,
+            "`{3}([\\s\\S]*?)`{3}",
+            "<pre class=\"code-block\">$1</pre>");
+        encoded = System.Text.RegularExpressions.Regex.Replace(
+            encoded,
+            "`([^`]+)`",
+            "<code>$1</code>");
+        encoded = System.Text.RegularExpressions.Regex.Replace(
+            encoded,
+            @"\*\*([^*]+)\*\*",
+            "<strong>$1</strong>");
+        encoded = System.Text.RegularExpressions.Regex.Replace(
+            encoded,
+            @"\*([^*]+)\*",
+            "<em>$1</em>");
+        return encoded.Replace("\n", "<br />");
+    }
+}
