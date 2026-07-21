@@ -52,11 +52,14 @@ Health check: `GET /api/health`
 
 ### Foundry (recommended — full stock agent with tools)
 
-**Azure sign-in runs automatically when the app starts** (no manual `az login` required for local dev):
+**Azure sign-in runs when the app starts** (and again on first Foundry chat if needed):
 
 1. `dotnet run --project StockMarketChat`
-2. A browser window opens for Microsoft login if no cached CLI/VS/env credential works.
-3. Tokens are cached on disk (`TokenCachePersistenceOptions`) so the next run is silent.
+2. If you already ran `az login` (or are signed into Visual Studio), auth is **silent** — no browser.
+3. Only if no CLI/VS/env session exists: a **browser** window opens, or a **device code** is printed in the console.
+4. Tokens are cached on disk so later runs stay silent.
+
+> If chat shows “demo mode”, Foundry failed or was not selected. Default provider is now `Foundry`. Check the server console for errors and `GET /api/health` (`azureAuthenticated`).
 
 | Setting | Purpose |
 |---------|---------|

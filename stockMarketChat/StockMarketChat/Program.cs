@@ -10,7 +10,8 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddHttpClient(nameof(ChatService), client =>
 {
-    client.Timeout = TimeSpan.FromMinutes(2);
+    // Agent + OpenAPI tool round-trips can exceed 60s under rate limits.
+    client.Timeout = TimeSpan.FromMinutes(3);
 });
 
 // Shared Azure credential + automatic sign-in when the host starts.

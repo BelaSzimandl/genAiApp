@@ -52,18 +52,11 @@ public sealed class ChatService
 
         try
         {
+            // Foundry is the primary path whenever the project endpoint is configured.
             if (IsProvider(provider, "Foundry") || (IsProvider(provider, "Auto") && HasFoundryConfig()))
             {
-                try
-                {
-                    var reply = await InvokeFoundryAgentAsync(message, history, cancellationToken);
-                    return new ChatResponse { Reply = reply, Provider = "foundry", Success = true };
-                }
-                catch (Exception foundryEx) when (IsProvider(provider, "Auto"))
-                {
-                    _logger.LogWarning(foundryEx, "Foundry agent failed; falling back");
-                    // Continue to SpaceXAI / demo in Auto mode.
-                }
+                var reply = await InvokeFoundryAgentAsync(message, history, cancellationToken);
+                return new ChatResponse { Reply = reply, Provider = "foundry", Success = true };
             }
 
             if (IsProvider(provider, "SpaceXAI") || (IsProvider(provider, "Auto") && HasSpaceXaiKey()))
@@ -72,7 +65,7 @@ public sealed class ChatService
                 return new ChatResponse { Reply = reply, Provider = "spacexai", Success = true };
             }
 
-            if (IsProvider(provider, "Demo") || IsProvider(provider, "Auto"))
+            if (IsProvider(provider, "Demo"))
             {
                 var demo = await BuildDemoReplyAsync(message, cancellationToken);
                 return new ChatResponse { Reply = demo, Provider = "demo", Success = true };
@@ -112,49 +105,115 @@ public sealed class ChatService
         var endpoint = _config["Chat:Foundry:ProjectEndpoint"]!.TrimEnd('/');
         var agentName = _config["Chat:Foundry:AgentName"] ?? "log-insights-chatbot";
         var model = _config["Chat:Foundry:Model"] ?? "gpt-5-mini";
-
-        // Uses the shared auth service (warmed up at app start; may open browser once).
         var token = await _azureAuth.GetAccessTokenAsync(cancellationToken);
+        var client = _httpClientFactory.CreateClient(nameof(ChatService));
 
-        // Build conversational input from recent history + current message.
-        var inputItems = new List<object>();
-        foreach (var item in history.TakeLast(12))
+        // Nudge the agent to call tools in the same turn (gpt-5-mini sometimes only promises to fetch).
+        var inputText =
+            BuildConversationInput(history, message)
+            + "\n\n[System reminder: For any price/list/mover/exchange question you MUST call the stock tools "
+            + "in this turn and return concrete quote data. Do not only say you will call the API.]";
+
+        var first = await PostFoundryResponseAsync(
+            client,
+            endpoint,
+            token.Token,
+            model,
+            agentName,
+            input: inputText,
+            previousResponseId: null,
+            cancellationToken);
+
+        var result = AnalyzeFoundryBody(first.Body);
+        _logger.LogInformation(
+            "Foundry turn 1: status={Status}, tools={ToolCount}, deferred={Deferred}, replyLen={Len}",
+            result.Status,
+            result.ToolCallCount,
+            result.LooksDeferred,
+            result.Text.Length);
+
+        // If the model finished with "Calling API..." and never invoked tools, force a continuation.
+        if (result.LooksDeferred || (result.ToolCallCount == 0 && IsMarketDataQuestion(message) && IsThinAnswer(result.Text)))
         {
-            if (string.IsNullOrWhiteSpace(item.Content))
+            _logger.LogWarning("Foundry agent deferred tool use; requesting forced continuation.");
+            var continueInput =
+                "Continue the previous request now. Call the OpenAPI stock tools (listStocks / getStock / getMovers / listExchanges) "
+                + "with the correct filters and return the actual table of quotes. "
+                + "Do not reply with only 'Calling API' or 'I will fetch'.";
+
+            var second = await PostFoundryResponseAsync(
+                client,
+                endpoint,
+                token.Token,
+                model,
+                agentName,
+                input: continueInput,
+                previousResponseId: first.ResponseId,
+                cancellationToken);
+
+            var continued = AnalyzeFoundryBody(second.Body);
+            _logger.LogInformation(
+                "Foundry turn 2: status={Status}, tools={ToolCount}, deferred={Deferred}, replyLen={Len}",
+                continued.Status,
+                continued.ToolCallCount,
+                continued.LooksDeferred,
+                continued.Text.Length);
+
+            if (!continued.LooksDeferred && !string.IsNullOrWhiteSpace(continued.Text) && !IsThinAnswer(continued.Text))
             {
-                continue;
+                return continued.Text;
             }
 
-            var role = item.Role.Equals("assistant", StringComparison.OrdinalIgnoreCase) ? "assistant" : "user";
-            inputItems.Add(new
+            // Last resort: serve live stock API data so the UI never hangs on a promise-only reply.
+            var fallback = await TryStockApiFallbackAsync(message, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(fallback))
             {
-                type = "message",
-                role,
-                content = item.Content
-            });
+                return fallback;
+            }
+
+            return string.IsNullOrWhiteSpace(continued.Text) ? result.Text : continued.Text;
         }
 
-        inputItems.Add(new
+        if (string.IsNullOrWhiteSpace(result.Text))
         {
-            type = "message",
-            role = "user",
-            content = message
-        });
+            var fallback = await TryStockApiFallbackAsync(message, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(fallback))
+            {
+                return fallback;
+            }
+        }
 
+        return result.Text;
+    }
+
+    private async Task<(string Body, string? ResponseId)> PostFoundryResponseAsync(
+        HttpClient client,
+        string endpoint,
+        string accessToken,
+        string model,
+        string agentName,
+        string input,
+        string? previousResponseId,
+        CancellationToken cancellationToken)
+    {
         var payload = new Dictionary<string, object?>
         {
             ["model"] = model,
-            ["input"] = inputItems,
-            ["agent"] = new Dictionary<string, string>
+            ["input"] = input,
+            ["agent_reference"] = new Dictionary<string, string>
             {
                 ["name"] = agentName,
                 ["type"] = "agent_reference"
             }
         };
 
-        var client = _httpClientFactory.CreateClient(nameof(ChatService));
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{endpoint}/openai/v1/responses");
-        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
+        if (!string.IsNullOrWhiteSpace(previousResponseId))
+        {
+            payload["previous_response_id"] = previousResponseId;
+        }
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{endpoint.TrimEnd('/')}/openai/v1/responses");
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         httpRequest.Content = new StringContent(
             JsonSerializer.Serialize(payload, JsonOptions),
             Encoding.UTF8,
@@ -169,7 +228,183 @@ public sealed class ChatService
             throw new InvalidOperationException($"Foundry agent call failed ({(int)response.StatusCode}): {Truncate(body, 400)}");
         }
 
-        return ExtractResponseText(body);
+        string? responseId = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String)
+            {
+                responseId = idEl.GetString();
+            }
+        }
+        catch
+        {
+            // ignore parse errors for id
+        }
+
+        return (body, responseId);
+    }
+
+    private static string BuildConversationInput(IReadOnlyList<ChatMessageDto> history, string message)
+    {
+        if (history.Count == 0)
+        {
+            return message;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("Conversation so far:");
+        foreach (var item in history.TakeLast(12))
+        {
+            if (string.IsNullOrWhiteSpace(item.Content))
+            {
+                continue;
+            }
+
+            var role = item.Role.Equals("assistant", StringComparison.OrdinalIgnoreCase) ? "Assistant" : "User";
+            sb.Append(role).Append(": ").AppendLine(item.Content.Trim());
+        }
+
+        sb.Append("User: ").Append(message);
+        return sb.ToString();
+    }
+
+    private sealed record FoundryAnalysis(string Status, string Text, int ToolCallCount, bool LooksDeferred);
+
+    private static FoundryAnalysis AnalyzeFoundryBody(string body)
+    {
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        var status = root.TryGetProperty("status", out var statusEl) ? statusEl.GetString() ?? "" : "";
+        var text = ExtractResponseText(body);
+        var toolCount = 0;
+
+        if (root.TryGetProperty("output", out var output) && output.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in output.EnumerateArray())
+            {
+                var type = item.TryGetProperty("type", out var t) ? t.GetString() : null;
+                if (type is "openapi_call" or "openapi_call_output" or "function_call" or "function_call_output")
+                {
+                    toolCount++;
+                }
+            }
+        }
+
+        var deferred = toolCount == 0 && LooksLikeDeferredToolPromise(text);
+        return new FoundryAnalysis(status, text, toolCount, deferred);
+    }
+
+    private static bool LooksLikeDeferredToolPromise(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return true;
+        }
+
+        var lower = text.ToLowerInvariant();
+        string[] markers =
+        [
+            "calling api",
+            "i'll fetch",
+            "i will fetch",
+            "let me fetch",
+            "let me pull",
+            "i'll pull",
+            "i will pull",
+            "one moment",
+            "from the database now",
+            "looking that up",
+            "querying the",
+            "i'll get",
+            "i will get",
+            "hang tight",
+            "please wait"
+        ];
+
+        if (markers.Any(m => lower.Contains(m)))
+        {
+            // If the message already contains a price table / symbols with numbers, treat as complete.
+            if (lower.Contains("usd") || lower.Contains("change") || lower.Contains("|") || lower.Contains("price"))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsThinAnswer(string text) =>
+        string.IsNullOrWhiteSpace(text) || text.Trim().Length < 80;
+
+    private static bool IsMarketDataQuestion(string message)
+    {
+        var lower = message.ToLowerInvariant();
+        return lower.Contains("stock")
+               || lower.Contains("nasdaq")
+               || lower.Contains("nyse")
+               || lower.Contains("price")
+               || lower.Contains("gainer")
+               || lower.Contains("loser")
+               || lower.Contains("exchange")
+               || lower.Contains("sector")
+               || lower.Contains("ticker")
+               || lower.Contains("mover");
+    }
+
+    private async Task<string?> TryStockApiFallbackAsync(string message, CancellationToken cancellationToken)
+    {
+        var stockApi = (_config["Chat:StockQueryApiBaseUrl"]
+                        ?? "https://stock-query-api-bsz.azurewebsites.net").TrimEnd('/');
+        var client = _httpClientFactory.CreateClient(nameof(ChatService));
+        var lower = message.ToLowerInvariant();
+
+        try
+        {
+            string path;
+            if (lower.Contains("gainer") || (lower.Contains("top") && lower.Contains("gain")))
+            {
+                path = "/movers?direction=gainers&limit=10";
+            }
+            else if (lower.Contains("loser"))
+            {
+                path = "/movers?direction=losers&limit=10";
+            }
+            else if (lower.Contains("exchange") && (lower.Contains("list") || lower.StartsWith("list")))
+            {
+                path = "/exchanges";
+            }
+            else
+            {
+                var qs = new List<string> { "limit=15" };
+                if (lower.Contains("nasdaq")) qs.Add("exchange=NASDAQ");
+                if (lower.Contains("nyse") && !lower.Contains("nysearca")) qs.Add("exchange=NYSE");
+                if (lower.Contains("technolog")) qs.Add("sector=Technology");
+                if (lower.Contains("energy")) qs.Add("sector=Energy");
+                if (lower.Contains("financ")) qs.Add("sector=Financials");
+                path = "/stocks?" + string.Join('&', qs);
+
+                var symbol = ExtractSymbol(message);
+                if (symbol is not null && (lower.Contains("price") || lower.Contains("quote") || message.Trim().Length <= 8))
+                {
+                    path = $"/stocks/{symbol}";
+                }
+            }
+
+            var json = await client.GetStringAsync($"{stockApi}{path}", cancellationToken);
+            return
+                "**Market data** (direct stock API fallback — agent tool turn was incomplete):\n\n"
+                + "```json\n"
+                + PrettyJson(Truncate(json, 3500))
+                + "\n```";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Stock API fallback failed");
+            return null;
+        }
     }
 
     private async Task<string> InvokeSpaceXaiAsync(
@@ -312,6 +547,13 @@ public sealed class ChatService
             var sb = new StringBuilder();
             foreach (var item in output.EnumerateArray())
             {
+                // Prefer final assistant message items (skip reasoning / tool call noise).
+                var itemType = item.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : null;
+                if (itemType is "reasoning" or "openapi_call" or "openapi_call_output" or "function_call" or "function_call_output")
+                {
+                    continue;
+                }
+
                 if (item.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var part in content.EnumerateArray())
@@ -319,12 +561,6 @@ public sealed class ChatService
                         if (part.TryGetProperty("text", out var textEl) && textEl.ValueKind == JsonValueKind.String)
                         {
                             sb.AppendLine(textEl.GetString());
-                        }
-                        else if (part.TryGetProperty("type", out var typeEl)
-                                 && typeEl.GetString() is "output_text" or "text"
-                                 && part.TryGetProperty("text", out var t2))
-                        {
-                            sb.AppendLine(t2.GetString());
                         }
                     }
                 }

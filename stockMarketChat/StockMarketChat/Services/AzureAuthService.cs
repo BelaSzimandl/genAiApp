@@ -27,11 +27,15 @@ public sealed class AzureAuthService
             "false",
             StringComparison.OrdinalIgnoreCase);
 
-        // Prefer silent sources first; fall through to browser login for local dev.
+        // Prefer silent sources first; fall through to browser / device-code login for local dev.
+        // Short CLI timeout so we don't block for ~30s before interactive when az is missing.
+        var cliOptions = CreateCliOptions(tenantId);
+        cliOptions.ProcessTimeout = TimeSpan.FromSeconds(5);
+
         var chain = new List<TokenCredential>
         {
             new EnvironmentCredential(),
-            new AzureCliCredential(CreateCliOptions(tenantId)),
+            new AzureCliCredential(cliOptions),
             new VisualStudioCredential(CreateVsOptions(tenantId)),
             new AzurePowerShellCredential(),
             new AzureDeveloperCliCredential()
@@ -55,8 +59,35 @@ public sealed class AzureAuthService
             }
 
             chain.Add(new InteractiveBrowserCredential(browserOptions));
+
+            // Console device-code fallback when browser cannot open (headless / restricted).
+            var deviceOptions = new DeviceCodeCredentialOptions
+            {
+                AdditionallyAllowedTenants = { "*" },
+                DeviceCodeCallback = (code, _) =>
+                {
+                    _logger.LogWarning(
+                        "Azure device login required. Open {Url} and enter code {Code}",
+                        code.VerificationUri,
+                        code.UserCode);
+                    Console.WriteLine();
+                    Console.WriteLine("=== Azure sign-in required ===");
+                    Console.WriteLine($"Open: {code.VerificationUri}");
+                    Console.WriteLine($"Code: {code.UserCode}");
+                    Console.WriteLine("==============================");
+                    Console.WriteLine();
+                    return Task.CompletedTask;
+                }
+            };
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                deviceOptions.TenantId = tenantId;
+            }
+
+            chain.Add(new DeviceCodeCredential(deviceOptions));
+
             _logger.LogInformation(
-                "Azure auth: interactive browser login enabled (opens automatically if needed).");
+                "Azure auth: interactive browser + device-code enabled (browser only if CLI/VS has no session).");
         }
 
         _credential = new ChainedTokenCredential(chain.ToArray());

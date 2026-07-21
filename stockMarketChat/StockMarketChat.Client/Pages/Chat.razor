@@ -81,7 +81,7 @@
                         </div>
                         <div class="msg-body">
                             <span class="typing-dots"><span></span><span></span><span></span></span>
-                            Scanning the book…
+                            @_statusText
                         </div>
                     </div>
                 }
@@ -137,6 +137,7 @@
     private bool _busy;
     private string? _error;
     private string _providerLabel = "CONNECTING";
+    private string _statusText = "Scanning the book…";
     private ElementReference _messagesRef;
 
     protected override void OnInitialized()
@@ -176,6 +177,7 @@
 
         _error = null;
         _busy = true;
+        _statusText = "Calling Foundry agent (tools may take 15–60s)…";
         _draft = string.Empty;
 
         var userMsg = new ChatMessageDto
@@ -195,17 +197,18 @@
                 .ToList();
 
             var request = new ChatRequest { Message = text, History = history };
-            var response = await Http.PostAsJsonAsync("api/chat", request);
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3.5));
+            var response = await Http.PostAsJsonAsync("api/chat", request, cts.Token);
 
             ChatResponse? payload = null;
             if (response.Content.Headers.ContentLength is not 0)
             {
-                payload = await response.Content.ReadFromJsonAsync<ChatResponse>();
+                payload = await response.Content.ReadFromJsonAsync<ChatResponse>(cancellationToken: cts.Token);
             }
 
             if (!response.IsSuccessStatusCode || payload is null)
             {
-                var raw = payload?.Error ?? await response.Content.ReadAsStringAsync();
+                var raw = payload?.Error ?? await response.Content.ReadAsStringAsync(cts.Token);
                 throw new InvalidOperationException(string.IsNullOrWhiteSpace(raw) ? response.ReasonPhrase : raw);
             }
 
@@ -224,6 +227,17 @@
                 _error = payload.Error;
             }
         }
+        catch (TaskCanceledException)
+        {
+            _error = "Request timed out waiting for the agent.";
+            _messages.Add(new ChatMessageDto
+            {
+                Role = "assistant",
+                Content = "Timed out waiting for Foundry (tool calls can be slow under rate limits). Please retry in a minute.",
+                Timestamp = DateTimeOffset.Now
+            });
+            _providerLabel = "TIMEOUT";
+        }
         catch (Exception ex)
         {
             _error = ex.Message;
@@ -238,6 +252,7 @@
         finally
         {
             _busy = false;
+            _statusText = "Scanning the book…";
             await ScrollToBottomAsync();
         }
     }
