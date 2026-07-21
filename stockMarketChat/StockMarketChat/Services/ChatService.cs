@@ -3,8 +3,6 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Azure.Core;
-using Azure.Identity;
 using OpenAI;
 using OpenAI.Chat;
 using StockMarketChat.Client.Models;
@@ -21,15 +19,18 @@ public sealed class ChatService
 
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly AzureAuthService _azureAuth;
     private readonly ILogger<ChatService> _logger;
 
     public ChatService(
         IConfiguration config,
         IHttpClientFactory httpClientFactory,
+        AzureAuthService azureAuth,
         ILogger<ChatService> logger)
     {
         _config = config;
         _httpClientFactory = httpClientFactory;
+        _azureAuth = azureAuth;
         _logger = logger;
     }
 
@@ -112,10 +113,8 @@ public sealed class ChatService
         var agentName = _config["Chat:Foundry:AgentName"] ?? "log-insights-chatbot";
         var model = _config["Chat:Foundry:Model"] ?? "gpt-5-mini";
 
-        var credential = new DefaultAzureCredential();
-        var token = await credential.GetTokenAsync(
-            new TokenRequestContext(["https://ai.azure.com/.default"]),
-            cancellationToken);
+        // Uses the shared auth service (warmed up at app start; may open browser once).
+        var token = await _azureAuth.GetAccessTokenAsync(cancellationToken);
 
         // Build conversational input from recent history + current message.
         var inputItems = new List<object>();

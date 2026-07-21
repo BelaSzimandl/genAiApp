@@ -52,11 +52,24 @@ Health check: `GET /api/health`
 
 ### Foundry (recommended — full stock agent with tools)
 
-1. `az login` (or use a managed identity in Azure).
-2. Ensure you can open the agent in the [Foundry project](https://ai.azure.com).
-3. Keep `Chat:Provider` as `Auto` or set to `Foundry`.
+**Azure sign-in runs automatically when the app starts** (no manual `az login` required for local dev):
+
+1. `dotnet run --project StockMarketChat`
+2. A browser window opens for Microsoft login if no cached CLI/VS/env credential works.
+3. Tokens are cached on disk (`TokenCachePersistenceOptions`) so the next run is silent.
+
+| Setting | Purpose |
+|---------|---------|
+| `Chat:Foundry:InteractiveLogin` | `true` (default) — allow browser login |
+| `Chat:Foundry:TenantId` | Optional; set if your account is multi-tenant |
+
+Credential order: environment → Azure CLI → Visual Studio → PowerShell → Azure Developer CLI → **interactive browser**.
+
+You can still use `az login` beforehand if you prefer a silent CLI token. Ensure you can open the agent in the [Foundry project](https://ai.azure.com). Keep `Chat:Provider` as `Auto` or `Foundry`.
 
 The server calls the Responses API with `agent_reference` for `log-insights-chatbot` (same pattern as `foundryLogAgent/invoke_prompt_agent.py`).
+
+`GET /api/health` reports `azureAuthenticated` and token expiry after warmup.
 
 ### SpaceXAI
 

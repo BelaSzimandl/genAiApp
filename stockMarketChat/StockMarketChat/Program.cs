@@ -13,6 +13,9 @@ builder.Services.AddHttpClient(nameof(ChatService), client =>
     client.Timeout = TimeSpan.FromMinutes(2);
 });
 
+// Shared Azure credential + automatic sign-in when the host starts.
+builder.Services.AddSingleton<AzureAuthService>();
+builder.Services.AddHostedService<AzureAuthWarmupService>();
 builder.Services.AddScoped<ChatService>();
 
 var app = builder.Build();
@@ -43,7 +46,7 @@ app.MapPost("/api/chat", async (ChatRequest request, ChatService chat, Cancellat
     return Results.Ok(result);
 }).DisableAntiforgery();
 
-app.MapGet("/api/health", (IConfiguration config) =>
+app.MapGet("/api/health", (IConfiguration config, AzureAuthService auth) =>
 {
     var provider = config["Chat:Provider"] ?? "Auto";
     return Results.Ok(new
@@ -53,7 +56,10 @@ app.MapGet("/api/health", (IConfiguration config) =>
         provider,
         foundryConfigured = !string.IsNullOrWhiteSpace(config["Chat:Foundry:ProjectEndpoint"]),
         spaceXaiConfigured = !string.IsNullOrWhiteSpace(
-            config["Chat:SpaceXAI:ApiKey"] ?? Environment.GetEnvironmentVariable("XAI_API_KEY"))
+            config["Chat:SpaceXAI:ApiKey"] ?? Environment.GetEnvironmentVariable("XAI_API_KEY")),
+        azureAuthenticated = auth.IsAuthenticated,
+        azureTokenExpiresOn = auth.TokenExpiresOn,
+        azureAuthError = auth.LastError
     });
 });
 
