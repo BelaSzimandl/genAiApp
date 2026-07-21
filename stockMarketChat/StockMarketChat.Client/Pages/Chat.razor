@@ -22,20 +22,30 @@
     </header>
 
     <div class="ticker-tape" aria-hidden="true">
-        <div class="ticker-track">
-            @foreach (var tick in _ticker)
-            {
-                <span class="tick @(tick.Up ? "up" : "down")">
-                    @tick.Symbol <strong>@tick.Change</strong>
-                </span>
-            }
-            @foreach (var tick in _ticker)
-            {
-                <span class="tick @(tick.Up ? "up" : "down")">
-                    @tick.Symbol <strong>@tick.Change</strong>
-                </span>
-            }
-        </div>
+        @if (_ticker.Count == 0)
+        {
+            <div class="ticker-track ticker-loading">
+                <span class="tick">Loading Cosmos quotes…</span>
+            </div>
+        }
+        else
+        {
+            <div class="ticker-track">
+                @foreach (var tick in _ticker)
+                {
+                    <span class="tick @(tick.Up ? "up" : "down")" title="@(tick.Price is null ? null : $"${tick.Price:0.##}")">
+                        @tick.Symbol <strong>@tick.Change</strong>
+                    </span>
+                }
+                @* Duplicate strip for seamless marquee loop *@
+                @foreach (var tick in _ticker)
+                {
+                    <span class="tick @(tick.Up ? "up" : "down")">
+                        @tick.Symbol <strong>@tick.Change</strong>
+                    </span>
+                }
+            </div>
+        }
     </div>
 
     <div class="chat-shell">
@@ -111,17 +121,7 @@
 
 @code {
     private readonly List<ChatMessageDto> _messages = [];
-    private readonly List<(string Symbol, string Change, bool Up)> _ticker =
-    [
-        ("AAPL", "+1.24%", true),
-        ("MSFT", "+0.68%", true),
-        ("NVDA", "-0.41%", false),
-        ("SPY", "+0.22%", true),
-        ("BTC-USD", "+2.15%", true),
-        ("XOM", "-0.18%", false),
-        ("SAP", "+0.91%", true),
-        ("NASDAQ", "+0.55%", true)
-    ];
+    private List<TickerItemDto> _ticker = [];
 
     private readonly string[] _quickPrompts =
     [
@@ -140,7 +140,7 @@
     private string _statusText = "Scanning the book…";
     private ElementReference _messagesRef;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         _messages.Add(new ChatMessageDto
         {
@@ -151,6 +151,34 @@
             Timestamp = DateTimeOffset.Now
         });
         _providerLabel = "READY";
+        await LoadTickerAsync();
+    }
+
+    private async Task LoadTickerAsync()
+    {
+        try
+        {
+            // 1) Browser localStorage (survives app restart + page reload, 1-day TTL).
+            var browserCache = await Js.InvokeAsync<TickerResponse?>("marketChat.getTickerCache");
+            if (browserCache?.Items is { Count: > 0 })
+            {
+                _ticker = browserCache.Items;
+                return;
+            }
+
+            // 2) Server (memory → durable App_Data file → Cosmos stock API).
+            var response = await Http.GetFromJsonAsync<TickerResponse>("api/ticker");
+            if (response?.Items is { Count: > 0 })
+            {
+                _ticker = response.Items;
+                await Js.InvokeVoidAsync("marketChat.setTickerCache", response);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Tape is decorative; keep chat usable if Cosmos/API is down.
+            _error = $"Ticker tape unavailable: {ex.Message}";
+        }
     }
 
     private async Task UsePrompt(string prompt)

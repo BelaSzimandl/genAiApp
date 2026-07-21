@@ -347,6 +347,13 @@ code {
     font-size: 0.8rem;
 }
 
+.ticker-track.ticker-loading {
+    width: 100%;
+    animation: none;
+    justify-content: center;
+    color: var(--md-muted);
+}
+
 .tick {
     white-space: nowrap;
     color: #a8b6c9;

@@ -55,3 +55,7 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# MarketDesk durable ticker cache
+stockMarketChat/**/App_Data/
+

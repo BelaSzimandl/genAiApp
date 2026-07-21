@@ -20,3 +20,22 @@ public sealed class ChatResponse
     public bool Success { get; set; } = true;
     public string? Error { get; set; }
 }
+
+/// <summary>One tape line for the market ticker UI.</summary>
+public sealed class TickerItemDto
+{
+    public string Symbol { get; set; } = string.Empty;
+    public string Change { get; set; } = string.Empty;
+    public bool Up { get; set; }
+    public decimal? Price { get; set; }
+    public decimal? ChangePct { get; set; }
+}
+
+public sealed class TickerResponse
+{
+    public List<TickerItemDto> Items { get; set; } = [];
+    public DateTimeOffset CachedAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
+    public bool FromCache { get; set; }
+    public string Source { get; set; } = "cosmos";
+}

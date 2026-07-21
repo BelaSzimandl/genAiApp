@@ -1,3 +1,7 @@
+@using StockMarketChat.Client.Models
+@using StockMarketChat.Services
+@inject MarketDataService MarketData
+
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid brand-row">
         <a class="navbar-brand" href="">
@@ -26,9 +30,34 @@
 
     <div class="nav-footer px-3">
         <div class="mini-ticker">
-            <div class="mini-line up">AAPL +1.2%</div>
-            <div class="mini-line down">NVDA -0.4%</div>
-            <div class="mini-line up">SPY +0.2%</div>
+            @if (_mini.Count == 0)
+            {
+                <div class="mini-line">Loading quotes…</div>
+            }
+            else
+            {
+                @foreach (var tick in _mini)
+                {
+                    <div class="mini-line @(tick.Up ? "up" : "down")">@tick.Symbol @tick.Change</div>
+                }
+            }
         </div>
     </div>
 </div>
+
+@code {
+    private List<TickerItemDto> _mini = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var ticker = await MarketData.GetTickerAsync();
+            _mini = ticker.Items.Take(3).ToList();
+        }
+        catch
+        {
+            _mini = [];
+        }
+    }
+}

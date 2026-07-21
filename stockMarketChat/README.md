@@ -97,6 +97,32 @@ If neither Foundry nor SpaceXAI is usable, the API returns demo guidance and may
 - List exchanges
 - Filter stocks down more than 1%
 
+## Ticker tape (Cosmos quotes)
+
+Quotes come from Cosmos (via stock-query-api) and are cached **for 1 day** in layers that **survive app restarts**:
+
+```text
+Browser localStorage (Chat UI)
+        ↓ miss
+GET /api/ticker
+        ↓
+MarketDataService
+  1. IMemoryCache          (fast, process lifetime)
+  2. App_Data/ticker-cache.json  (durable file — survives restart)
+  3. stock-query-api → Cosmos
+```
+
+Why not cookies? A full quote list is larger than reliable cookie limits (~4KB).  
+Why not default ASP.NET session? Session state is in-memory by default, so it is also wiped on restart (same problem as pure memory cache).
+
+| Setting | Purpose |
+|---------|---------|
+| `Chat:StockQueryApiBaseUrl` | Cosmos-backed stock API base URL |
+| `Chat:Ticker:Limit` | Max quotes on the tape (default 20) |
+| `Chat:Ticker:CacheFilePath` | Optional override for durable cache file (default `App_Data/ticker-cache.json`) |
+
+To force refresh: delete `StockMarketChat/App_Data/ticker-cache.json` and clear browser key `marketdesk.ticker.v1` (or wait 24h).
+
 ## Project layout
 
 ```text
